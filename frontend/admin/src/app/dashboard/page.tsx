@@ -75,13 +75,14 @@ export default function DashboardPage() {
   const [token, setToken] = useState('');
 
   const loadDocuments = async (authToken: string) => {
+    console.log('🔄 loadDocuments called, token:', authToken?.substring(0, 20) + '...');
     try {
+      console.log('📡 Calling listDocuments API...');
       const docs = await listDocuments(authToken);
+      console.log('✅ Documents loaded:', docs.length, 'documents');
       setDocuments(docs);
     } catch (error) {
-      console.error('Failed to load documents:', error);
-    } finally {
-      setLoading(false);
+      console.error('❌ Failed to load documents:', error);
     }
   };
 
@@ -108,32 +109,65 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    console.log('🚀 Initial useEffect running...');
     const storedToken = localStorage.getItem('token');
+    console.log('🔑 Token from localStorage:', storedToken ? 'Found (' + storedToken.substring(0, 20) + '...)' : 'NOT FOUND');
+    
     if (!storedToken) {
+      console.log('❌ No token, redirecting to login...');
       window.location.href = '/';
       return;
     }
+    
     setToken(storedToken);
-    loadDocuments(storedToken);
-    loadSessions();
-    loadFeedback();
+    console.log('📥 Loading initial data...');
+    
+    // Load all data in parallel and set loading to false when done
+    Promise.all([
+      loadDocuments(storedToken),
+      loadSessions(),
+      loadFeedback()
+    ]).finally(() => {
+      console.log('🏁 All initial data loaded, setting loading to false');
+      setLoading(false);
+    });
   }, []);
   
   // Separate effect for polling - only polls when there are pending/processing docs
   useEffect(() => {
-    if (!token || documents.length === 0) return;
+    console.log('🔍 Polling useEffect triggered. Token:', !!token, 'Docs:', documents.length);
+    
+    if (!token || documents.length === 0) {
+      console.log('⏸️ Skipping polling - no token or no documents yet');
+      return;
+    }
     
     const hasPendingDocs = documents.some(doc => 
       doc.status === 'pending' || doc.status === 'processing'
     );
     
-    if (!hasPendingDocs) return;
+    console.log('📊 Documents status check:', {
+      total: documents.length,
+      pending: documents.filter(d => d.status === 'pending').length,
+      processing: documents.filter(d => d.status === 'processing').length,
+      hasPendingDocs
+    });
     
+    if (!hasPendingDocs) {
+      console.log('✋ No pending docs, skipping polling');
+      return;
+    }
+    
+    console.log('⏰ Starting polling interval (5s)...');
     const pollInterval = setInterval(() => {
+      console.log('🔄 Polling tick...');
       loadDocuments(token);
     }, 5000);
     
-    return () => clearInterval(pollInterval);
+    return () => {
+      console.log('🛑 Clearing polling interval');
+      clearInterval(pollInterval);
+    };
   }, [documents, token]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
