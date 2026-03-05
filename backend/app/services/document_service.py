@@ -151,28 +151,46 @@ class DocumentService:
         return [chunk.page_content for chunk in chunks]
     
     def store_embeddings(self, document_id: str, chunks: List[str], filename: str):
-        """Store document chunks in ChromaDB with optimized batching"""
+        """Store document chunks in ChromaDB with optimized batch processing"""
         print(f"DEBUG: Storing {len(chunks)} chunks for document {document_id}")
         print(f"DEBUG: First chunk (first 100 chars): {chunks[0][:100] if chunks else 'EMPTY'}")
         
-        # Generate embeddings - OpenAI SDK already batches internally
-        # But we can still monitor progress for large documents
         import time
         start_time = time.time()
         
-        embeddings = self.embeddings.embed_documents(chunks)
+        # Process in batches for better performance and memory management
+        BATCH_SIZE = 100  # Process 100 chunks at a time
+        all_embeddings = []
+        
+        total_chunks = len(chunks)
+        batches = (total_chunks + BATCH_SIZE - 1) // BATCH_SIZE  # Ceiling division
+        
+        print(f"DEBUG: Processing {total_chunks} chunks in {batches} batch(es) of {BATCH_SIZE}")
+        
+        for i in range(0, total_chunks, BATCH_SIZE):
+            batch_start = time.time()
+            batch_chunks = chunks[i:i + BATCH_SIZE]
+            batch_num = i // BATCH_SIZE + 1
+            
+            # Generate embeddings for this batch
+            batch_embeddings = self.embeddings.embed_documents(batch_chunks)
+            all_embeddings.extend(batch_embeddings)
+            
+            batch_time = time.time() - batch_start
+            print(f"DEBUG: Batch {batch_num}/{batches}: {len(batch_chunks)} chunks in {batch_time:.2f}s ({len(batch_chunks)/batch_time:.1f} chunks/sec)")
         
         embed_time = time.time() - start_time
-        print(f"DEBUG: Generated {len(embeddings)} embeddings in {embed_time:.2f}s ({len(embeddings)/embed_time:.1f} chunks/sec)")
+        avg_rate = total_chunks / embed_time if embed_time > 0 else 0
+        print(f"DEBUG: Total embedding time: {embed_time:.2f}s (avg {avg_rate:.1f} chunks/sec)")
         
-        if not embeddings or len(embeddings) == 0:
+        if not all_embeddings or len(all_embeddings) == 0:
             raise ValueError(f"Failed to generate embeddings for {len(chunks)} chunks")
         
-        # Store in ChromaDB - also batched internally
+        # Store in ChromaDB in one batch for efficiency
         store_start = time.time()
         self.collection.add(
             ids=[f"{document_id}_{i}" for i in range(len(chunks))],
-            embeddings=embeddings,
+            embeddings=all_embeddings,
             documents=chunks,
             metadatas=[{
                 "document_id": document_id,
@@ -182,7 +200,7 @@ class DocumentService:
         )
         store_time = time.time() - store_start
         print(f"DEBUG: Stored in ChromaDB in {store_time:.2f}s")
-        print(f"DEBUG: Total embedding+storage time: {embed_time + store_time:.2f}s")
+        print(f"DEBUG: ✅ Total time: {embed_time + store_time:.2f}s for {total_chunks} chunks")
     
     def delete_embeddings(self, document_id: str):
         """Delete all embeddings for a document"""

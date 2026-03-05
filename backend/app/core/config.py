@@ -42,10 +42,10 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: set = {".pdf", ".txt", ".docx"}
     
     # RAG
-    CHUNK_SIZE: int = 1000  # Reduced from 1500 for faster processing
-    CHUNK_OVERLAP: int = 200  # Reduced from 300
-    TOP_K_RESULTS: int = 6  # Reduced from 8 for faster retrieval
-    CHAT_HISTORY_LIMIT: int = 5  # Reduced from 10 to 5 for shorter context
+    CHUNK_SIZE: int = 800  # Reduced from 1000 for faster processing
+    CHUNK_OVERLAP: int = 150  # Reduced from 200
+    TOP_K_RESULTS: int = 5  # Reduced from 6 for faster retrieval
+    CHAT_HISTORY_LIMIT: int = 4  # Reduced for shorter context
     
     class Config:
         env_file = ".env"
