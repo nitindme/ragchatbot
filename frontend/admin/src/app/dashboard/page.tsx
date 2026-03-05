@@ -74,8 +74,24 @@ export default function DashboardPage() {
   const [uploading, setUploading] = useState(false);
   const [token, setToken] = useState('');
 
-  const loadDocuments = async (authToken: string) => {
-    console.log('🔄 loadDocuments called, token:', authToken?.substring(0, 20) + '...');
+  console.log('🔍 DashboardPage render - loading:', loading, 'documents:', documents.length);
+
+  // Absolute failsafe - ensure loading is false after 3 seconds no matter what
+  useEffect(() => {
+    console.log('⏱️ Setting up 3-second failsafe timeout...');
+    const failsafeTimeout = setTimeout(() => {
+      console.log('🚨 FAILSAFE TRIGGERED - forcing loading to false after 3 seconds');
+      setLoading(false);
+    }, 3000);
+    
+    return () => {
+      console.log('🧹 Cleaning up failsafe timeout');
+      clearTimeout(failsafeTimeout);
+    };
+  }, []);
+
+  const loadDocuments = async (authToken: string, isInitialLoad = false) => {
+    console.log('🔄 loadDocuments called, token:', authToken?.substring(0, 20) + '...', 'isInitialLoad:', isInitialLoad);
     try {
       console.log('📡 Calling listDocuments API...');
       const docs = await listDocuments(authToken);
@@ -122,12 +138,19 @@ export default function DashboardPage() {
     setToken(storedToken);
     console.log('📥 Loading initial data...');
     
+    // Set a timeout to ensure loading is set to false even if API calls hang
+    const timeoutId = setTimeout(() => {
+      console.log('⏰ Timeout reached, forcing loading to false');
+      setLoading(false);
+    }, 5000); // 5 second timeout
+    
     // Load all data in parallel and set loading to false when done
     Promise.all([
-      loadDocuments(storedToken),
+      loadDocuments(storedToken, true),
       loadSessions(),
       loadFeedback()
     ]).finally(() => {
+      clearTimeout(timeoutId);
       console.log('🏁 All initial data loaded, setting loading to false');
       setLoading(false);
     });

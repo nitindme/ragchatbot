@@ -39,6 +39,8 @@ class BackgroundProcessor:
             
             for doc in pending_docs:
                 await self.process_document(db, doc)
+                # Yield to event loop after each document to allow API requests
+                await asyncio.sleep(0.1)
                 
         except Exception as e:
             logger.error(f"Error in background processor: {str(e)}")
@@ -64,12 +66,19 @@ class BackgroundProcessor:
             
             # Process with Docling and create embeddings
             logger.info(f"Starting OCR and chunking for {doc.filename}...")
+            
+            # Yield to event loop before heavy processing
+            await asyncio.sleep(0)
+            
             result = await asyncio.to_thread(
                 self.document_service.process_pdf,
                 file_content,
                 doc.filename,
                 str(doc.id)
             )
+            
+            # Yield to event loop after heavy processing
+            await asyncio.sleep(0)
             
             # Update document with results
             doc.status = 'completed'
