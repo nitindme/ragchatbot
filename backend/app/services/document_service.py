@@ -108,15 +108,15 @@ class DocumentService:
                 
                 conversion_time = time.time() - start_time
                 
-                # Quick table count
-                table_count = sum(1 for item in doc.body if item.label == 'table')
-                
                 # Export to markdown format which preserves tables nicely
                 markdown_text = doc.export_to_markdown()
                 
+                # Quick table count from markdown (safer than iterating body structure)
+                table_count = markdown_text.count('|---') if '|' in markdown_text else 0
+                
                 total_time = time.time() - start_time
                 print(f"DEBUG DOCLING: Processed {len(doc.pages)} pages in {total_time:.2f}s")
-                print(f"DEBUG DOCLING: Extracted {len(markdown_text)} chars, {table_count} tables")
+                print(f"DEBUG DOCLING: Extracted {len(markdown_text)} chars, ~{table_count} tables")
                 
                 if len(markdown_text) < 10:
                     raise ValueError("PDF contains no text. The document may be blank or corrupted.")
