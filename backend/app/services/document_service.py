@@ -1,4 +1,5 @@
 import hashlib
+import os
 from typing import List
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document as LCDocument
@@ -201,6 +202,48 @@ class DocumentService:
         store_time = time.time() - store_start
         print(f"DEBUG: Stored in ChromaDB in {store_time:.2f}s")
         print(f"DEBUG: ✅ Total time: {embed_time + store_time:.2f}s for {total_chunks} chunks")
+    
+    def process_pdf(self, content: bytes, filename: str, document_id: str) -> dict:
+        """Process PDF with Docling and store embeddings, return metadata"""
+        import time
+        import tempfile
+        
+        # Save to temp file
+        file_ext = os.path.splitext(filename)[1].lower()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        
+        try:
+            start_time = time.time()
+            
+            # Extract text
+            text = self.load_document(tmp_path, file_ext)
+            
+            # Chunk document
+            chunks = self.chunk_document(text)
+            total_chunks = len(chunks)
+            
+            if total_chunks == 0:
+                raise ValueError("No text content could be extracted from the document")
+            
+            # Store embeddings
+            self.store_embeddings(document_id, chunks, filename)
+            
+            # Get page count from Docling result
+            result = self.doc_converter.convert(tmp_path)
+            page_count = len(result.document.pages)
+            
+            total_time = time.time() - start_time
+            print(f"DEBUG: ✅ Processed {filename} in {total_time:.2f}s: {page_count} pages, {total_chunks} chunks")
+            
+            return {
+                "total_chunks": total_chunks,
+                "page_count": page_count,
+                "processing_time": total_time
+            }
+        finally:
+            os.unlink(tmp_path)
     
     def delete_embeddings(self, document_id: str):
         """Delete all embeddings for a document"""

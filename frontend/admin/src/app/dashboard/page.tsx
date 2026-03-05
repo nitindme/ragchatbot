@@ -15,6 +15,12 @@ interface Document {
   id: string;
   filename: string;
   created_at: string;
+  status?: string;
+  file_size?: number;
+  total_chunks?: number;
+  page_count?: number;
+  processing_error?: string;
+  updated_at?: string;
 }
 
 interface ChatSession {
@@ -78,7 +84,16 @@ export default function DashboardPage() {
     loadDocuments(storedToken);
     loadSessions();
     loadFeedback();
-  }, []);
+    
+    // Poll for document status updates every 5 seconds if there are pending/processing docs
+    const pollInterval = setInterval(() => {
+      if (documents.some(doc => doc.status === 'pending' || doc.status === 'processing')) {
+        loadDocuments(storedToken);
+      }
+    }, 5000);
+    
+    return () => clearInterval(pollInterval);
+  }, [documents]);
 
   const loadDocuments = async (authToken: string) => {
     try {
@@ -250,6 +265,12 @@ export default function DashboardPage() {
                         Filename
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Details
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                         Uploaded
                       </th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
@@ -259,9 +280,49 @@ export default function DashboardPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {documents.map((doc) => (
-                      <tr key={doc.id}>
+                      <tr key={doc.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4">
                           <div className="text-sm font-medium text-gray-900">{doc.filename}</div>
+                          {doc.file_size && (
+                            <div className="text-xs text-gray-500">
+                              {(doc.file_size / 1024 / 1024).toFixed(2)} MB
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          {doc.status === 'completed' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              ✓ Completed
+                            </span>
+                          )}
+                          {doc.status === 'processing' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              ⏳ Processing...
+                            </span>
+                          )}
+                          {doc.status === 'pending' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              ⏳ Pending
+                            </span>
+                          )}
+                          {doc.status === 'failed' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              ✗ Failed
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          {doc.status === 'completed' && (
+                            <div className="text-sm text-gray-600">
+                              <div>{doc.page_count} pages</div>
+                              <div>{doc.total_chunks} chunks</div>
+                            </div>
+                          )}
+                          {doc.status === 'failed' && doc.processing_error && (
+                            <div className="text-xs text-red-600" title={doc.processing_error}>
+                              {doc.processing_error.substring(0, 50)}...
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">
                           {new Date(doc.created_at).toLocaleString()}
