@@ -94,7 +94,8 @@ async def upload_document(
     # Trigger background processing
     if background_tasks:
         from app.services.background_processor import background_processor
-        background_tasks.add_task(background_processor.process_document, db, db_doc)
+        if background_processor:
+            background_tasks.add_task(background_processor.process_document, db, db_doc)
     
     return {
         "id": doc_id,

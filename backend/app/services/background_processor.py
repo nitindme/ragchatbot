@@ -7,7 +7,6 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.models.models import Document
-from app.services.document_service import DocumentService
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -17,8 +16,8 @@ logger = logging.getLogger(__name__)
 class BackgroundProcessor:
     """Handles background processing of documents"""
     
-    def __init__(self):
-        self.document_service = DocumentService()
+    def __init__(self, document_service=None):
+        self.document_service = document_service
         self.processing = False
         
     async def process_pending_documents(self):
@@ -88,12 +87,23 @@ class BackgroundProcessor:
             db.commit()
 
 
-# Global processor instance
-background_processor = BackgroundProcessor()
+# Global processor instance - will be initialized with document_service
+background_processor = None
+
+
+def init_background_processor(document_service):
+    """Initialize the background processor with a document service"""
+    global background_processor
+    background_processor = BackgroundProcessor(document_service)
+    return background_processor
 
 
 async def start_background_processor():
     """Start the background processor loop"""
+    if background_processor is None:
+        logger.error("Background processor not initialized!")
+        return
+        
     logger.info("Starting background document processor...")
     
     while True:

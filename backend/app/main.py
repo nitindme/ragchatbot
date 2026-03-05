@@ -18,7 +18,11 @@ background_task = None
 async def lifespan(app: FastAPI):
     """Start background processor on startup"""
     global background_task
-    from app.services.background_processor import start_background_processor
+    from app.services.background_processor import init_background_processor, start_background_processor
+    from app.api.admin import document_service
+    
+    # Initialize background processor with existing document service
+    init_background_processor(document_service)
     
     # Start background processor
     background_task = asyncio.create_task(start_background_processor())

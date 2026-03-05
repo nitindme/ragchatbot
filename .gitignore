@@ -20,3 +20,4 @@ out/
 .idea/
 .vscode/
 chroma_db/
+backend/uploads/
