@@ -18,28 +18,42 @@ interface Document {
 }
 
 interface ChatSession {
-  session_id: string;
+  id: string;
   created_at: string;
   message_count: number;
+  user_messages: number;
+  assistant_messages: number;
+  first_message?: string;
+  last_message?: string;
+  last_activity: string;
 }
 
 interface Feedback {
   id: number;
   session_id: string;
-  message: string;
-  feedback_type: string;
-  is_helpful: boolean;
+  message_id: string;
+  question: string;
+  response: string;
+  rating: number;
+  rating_text: string;
   comment?: string;
+  is_reviewed: boolean;
   created_at: string;
-  reviewed: boolean;
+  reviewed_at?: string;
+  sources?: string[];
+  has_comment: boolean;
+  time_ago: string;
 }
 
 interface FeedbackStats {
-  total: number;
-  helpful: number;
-  not_helpful: number;
+  total_feedback: number;
+  positive: number;
+  negative: number;
+  unreviewed: number;
   with_comments: number;
-  pending_review: number;
+  recent_7_days: number;
+  average_rating: number;
+  satisfaction_rate: number;
 }
 
 type TabType = 'documents' | 'sessions' | 'feedback';
@@ -281,38 +295,72 @@ export default function DashboardPage() {
                 No chat sessions yet
               </div>
             ) : (
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Session ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Created
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                      Messages
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {sessions.map((session) => (
-                    <tr key={session.session_id}>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-mono text-gray-900">
-                          {session.session_id.substring(0, 8)}...
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {new Date(session.created_at).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {session.message_count}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Session ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        First Message
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Last Message
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Messages
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Created
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Last Activity
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {sessions.map((session) => (
+                      <tr key={session.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4">
+                          <div className="text-xs font-mono text-gray-900">
+                            {session.id.substring(0, 12)}...
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-700 max-w-xs truncate">
+                            {session.first_message || 'N/A'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-700 max-w-xs truncate">
+                            {session.last_message || 'N/A'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800">
+                              Total: {session.message_count}
+                            </span>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">
+                              User: {session.user_messages}
+                            </span>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-800">
+                              Bot: {session.assistant_messages}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-xs text-gray-500">
+                          {new Date(session.created_at).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 text-xs text-gray-500">
+                          {new Date(session.last_activity).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
@@ -322,26 +370,30 @@ export default function DashboardPage() {
           <>
             {/* Stats Cards */}
             {feedbackStats && (
-              <div className="grid grid-cols-5 gap-4 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
                 <div className="bg-white rounded-lg shadow p-4">
-                  <div className="text-sm text-gray-500">Total</div>
-                  <div className="text-2xl font-bold">{feedbackStats.total}</div>
+                  <div className="text-sm text-gray-500">Total Feedback</div>
+                  <div className="text-2xl font-bold">{feedbackStats.total_feedback}</div>
                 </div>
                 <div className="bg-green-50 rounded-lg shadow p-4">
-                  <div className="text-sm text-green-600">Helpful</div>
-                  <div className="text-2xl font-bold text-green-600">{feedbackStats.helpful}</div>
+                  <div className="text-sm text-green-600">👍 Helpful</div>
+                  <div className="text-2xl font-bold text-green-600">{feedbackStats.positive}</div>
                 </div>
                 <div className="bg-red-50 rounded-lg shadow p-4">
-                  <div className="text-sm text-red-600">Not Helpful</div>
-                  <div className="text-2xl font-bold text-red-600">{feedbackStats.not_helpful}</div>
+                  <div className="text-sm text-red-600">👎 Not Helpful</div>
+                  <div className="text-2xl font-bold text-red-600">{feedbackStats.negative}</div>
                 </div>
                 <div className="bg-blue-50 rounded-lg shadow p-4">
-                  <div className="text-sm text-blue-600">With Comments</div>
+                  <div className="text-sm text-blue-600">💬 With Comments</div>
                   <div className="text-2xl font-bold text-blue-600">{feedbackStats.with_comments}</div>
                 </div>
                 <div className="bg-yellow-50 rounded-lg shadow p-4">
-                  <div className="text-sm text-yellow-600">Pending Review</div>
-                  <div className="text-2xl font-bold text-yellow-600">{feedbackStats.pending_review}</div>
+                  <div className="text-sm text-yellow-600">⏳ Pending</div>
+                  <div className="text-2xl font-bold text-yellow-600">{feedbackStats.unreviewed}</div>
+                </div>
+                <div className="bg-purple-50 rounded-lg shadow p-4">
+                  <div className="text-sm text-purple-600">📊 Satisfaction</div>
+                  <div className="text-2xl font-bold text-purple-600">{feedbackStats.satisfaction_rate}%</div>
                 </div>
               </div>
             )}
@@ -358,44 +410,91 @@ export default function DashboardPage() {
               ) : (
                 <div className="divide-y divide-gray-200">
                   {feedback.map((fb) => (
-                    <div key={fb.id} className="px-6 py-4">
+                    <div key={fb.id} className="px-6 py-4 hover:bg-gray-50">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              fb.is_helpful 
+                          {/* Header with rating and time */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                              fb.rating === 1
                                 ? 'bg-green-100 text-green-800' 
                                 : 'bg-red-100 text-red-800'
                             }`}>
-                              {fb.is_helpful ? '👍 Helpful' : '👎 Not Helpful'}
+                              {fb.rating_text}
                             </span>
-                            <span className="text-xs text-gray-500">
-                              {new Date(fb.created_at).toLocaleString()}
+                            <span className="text-sm text-gray-500">
+                              {fb.time_ago}
                             </span>
-                            {fb.reviewed && (
+                            {fb.is_reviewed && (
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                 ✓ Reviewed
                               </span>
                             )}
+                            {fb.has_comment && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                💬 Has Comment
+                              </span>
+                            )}
                           </div>
-                          <div className="text-sm text-gray-700 mb-1">
-                            <span className="font-medium">Message:</span> {fb.message}
+                          
+                          {/* Question */}
+                          <div className="mb-3">
+                            <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Question</div>
+                            <div className="text-sm text-gray-900 bg-blue-50 p-3 rounded">
+                              {fb.question}
+                            </div>
                           </div>
-                          {fb.comment && (
-                            <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded mt-2">
-                              <span className="font-medium">Comment:</span> {fb.comment}
+                          
+                          {/* Response */}
+                          <div className="mb-3">
+                            <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Bot Response</div>
+                            <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded">
+                              {fb.response}
+                            </div>
+                          </div>
+                          
+                          {/* Sources */}
+                          {fb.sources && fb.sources.length > 0 && (
+                            <div className="mb-3">
+                              <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Sources</div>
+                              <div className="flex flex-wrap gap-1">
+                                {fb.sources.map((source, idx) => (
+                                  <span key={idx} className="inline-flex items-center px-2 py-1 rounded text-xs bg-indigo-100 text-indigo-800">
+                                    📄 {source}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           )}
-                          <div className="text-xs text-gray-400 mt-1">
-                            Session: {fb.session_id.substring(0, 8)}...
+                          
+                          {/* User Comment */}
+                          {fb.comment && (
+                            <div className="mb-3">
+                              <div className="text-xs font-semibold text-gray-500 uppercase mb-1">User Comment</div>
+                              <div className="text-sm text-gray-900 bg-yellow-50 p-3 rounded border-l-4 border-yellow-400">
+                                {fb.comment}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Metadata */}
+                          <div className="flex items-center gap-4 text-xs text-gray-400 mt-2">
+                            <span>Session: {fb.session_id.substring(0, 8)}...</span>
+                            <span>Message: {fb.message_id.substring(0, 8)}...</span>
+                            <span>Created: {new Date(fb.created_at).toLocaleString()}</span>
+                            {fb.reviewed_at && (
+                              <span>Reviewed: {new Date(fb.reviewed_at).toLocaleString()}</span>
+                            )}
                           </div>
                         </div>
-                        {!fb.reviewed && (
+                        
+                        {/* Action Button */}
+                        {!fb.is_reviewed && (
                           <button
                             onClick={() => handleMarkReviewed(fb.id)}
-                            className="ml-4 px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                            className="ml-4 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                           >
-                            Mark Reviewed
+                            Mark as Reviewed
                           </button>
                         )}
                       </div>

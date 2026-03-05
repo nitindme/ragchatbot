@@ -130,7 +130,7 @@ def list_sessions(
     db: Session = Depends(get_db),
     limit: int = 20
 ):
-    """List recent chat sessions"""
+    """List recent chat sessions with detailed information"""
     sessions = db.query(ChatSession).order_by(
         ChatSession.created_at.desc()
     ).limit(limit).all()
@@ -139,7 +139,12 @@ def list_sessions(
         {
             "id": str(session.id),
             "created_at": session.created_at.isoformat(),
-            "message_count": len(session.messages)
+            "message_count": len(session.messages),
+            "user_messages": len([m for m in session.messages if m.role == "user"]),
+            "assistant_messages": len([m for m in session.messages if m.role == "assistant"]),
+            "first_message": session.messages[0].message[:100] + "..." if session.messages and len(session.messages[0].message) > 100 else (session.messages[0].message if session.messages else None),
+            "last_message": session.messages[-1].message[:100] + "..." if session.messages and len(session.messages[-1].message) > 100 else (session.messages[-1].message if session.messages else None),
+            "last_activity": session.messages[-1].created_at.isoformat() if session.messages else session.created_at.isoformat()
         }
         for session in sessions
     ]
