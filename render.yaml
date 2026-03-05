@@ -1,0 +1,54 @@
+# Render.com Blueprint for Backend Deployment
+# This file tells Render how to deploy your services
+
+services:
+  # Backend API (FastAPI)
+  - type: web
+    name: delhipolice-backend
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: LLM_PROVIDER
+        value: openai
+      - key: OPENAI_API_KEY
+        sync: false  # Must be set manually in Render dashboard
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_EMBED_MODEL
+        value: text-embedding-3-small
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false  # Must be set manually
+      - key: DATABASE_URL
+        fromDatabase:
+          name: delhipolice-postgres
+          property: connectionString
+      - key: CHROMA_URL
+        value: embedded  # Use embedded ChromaDB
+      - key: CHROMA_PERSIST_DIR
+        value: /app/chroma_data  # Persistent directory for ChromaDB
+      - key: CHUNK_SIZE
+        value: 1000
+      - key: CHUNK_OVERLAP
+        value: 200
+      - key: TOP_K_RESULTS
+        value: 8
+      - key: CHAT_HISTORY_LIMIT
+        value: 5
+    healthCheckPath: /health
+
+  # PostgreSQL Database
+databases:
+  - name: delhipolice-postgres
+    databaseName: ragdb
+    user: rag
+    plan: free
+    region: oregon
