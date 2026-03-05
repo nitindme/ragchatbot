@@ -74,27 +74,6 @@ export default function DashboardPage() {
   const [uploading, setUploading] = useState(false);
   const [token, setToken] = useState('');
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    if (!storedToken) {
-      window.location.href = '/';
-      return;
-    }
-    setToken(storedToken);
-    loadDocuments(storedToken);
-    loadSessions();
-    loadFeedback();
-    
-    // Poll for document status updates every 5 seconds if there are pending/processing docs
-    const pollInterval = setInterval(() => {
-      if (documents.some(doc => doc.status === 'pending' || doc.status === 'processing')) {
-        loadDocuments(storedToken);
-      }
-    }, 5000);
-    
-    return () => clearInterval(pollInterval);
-  }, [documents]);
-
   const loadDocuments = async (authToken: string) => {
     try {
       const docs = await listDocuments(authToken);
@@ -127,6 +106,35 @@ export default function DashboardPage() {
       console.error('Failed to load feedback:', error);
     }
   };
+
+  useEffect(() => {
+    const storedToken = localStorage.getItem('token');
+    if (!storedToken) {
+      window.location.href = '/';
+      return;
+    }
+    setToken(storedToken);
+    loadDocuments(storedToken);
+    loadSessions();
+    loadFeedback();
+  }, []);
+  
+  // Separate effect for polling - only polls when there are pending/processing docs
+  useEffect(() => {
+    if (!token || documents.length === 0) return;
+    
+    const hasPendingDocs = documents.some(doc => 
+      doc.status === 'pending' || doc.status === 'processing'
+    );
+    
+    if (!hasPendingDocs) return;
+    
+    const pollInterval = setInterval(() => {
+      loadDocuments(token);
+    }, 5000);
+    
+    return () => clearInterval(pollInterval);
+  }, [documents, token]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
