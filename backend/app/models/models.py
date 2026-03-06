@@ -14,6 +14,7 @@ class Document(Base):
     file_path = Column(String, nullable=True)  # Path to stored file
     file_size = Column(Integer, nullable=True)  # File size in bytes
     status = Column(String, default='pending', nullable=False)  # pending, processing, completed, failed
+    processing_progress = Column(Integer, default=0, nullable=False)  # Progress percentage (0-100)
     processing_error = Column(Text, nullable=True)  # Error message if failed
     total_chunks = Column(Integer, nullable=True)  # Number of chunks created
     page_count = Column(Integer, nullable=True)  # Number of pages in document

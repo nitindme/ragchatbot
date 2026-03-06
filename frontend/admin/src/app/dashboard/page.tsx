@@ -19,6 +19,7 @@ interface Document {
   file_size?: number;
   total_chunks?: number;
   page_count?: number;
+  processing_progress?: number;
   processing_error?: string;
   updated_at?: string;
 }
@@ -361,9 +362,17 @@ export default function DashboardPage() {
                             </span>
                           )}
                           {doc.status === 'processing' && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              ⏳ Processing...
-                            </span>
+                            <div className="flex flex-col gap-1">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                ⏳ Processing... {doc.processing_progress || 0}%
+                              </span>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                  style={{ width: `${doc.processing_progress || 0}%` }}
+                                />
+                              </div>
+                            </div>
                           )}
                           {doc.status === 'pending' && (
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">

@@ -20,6 +20,27 @@ class BackgroundProcessor:
         self.document_service = document_service
         self.processing = False
         
+    def reset_stuck_documents(self):
+        """Reset documents stuck in 'processing' status back to 'pending'"""
+        db = SessionLocal()
+        try:
+            stuck_docs = db.query(Document).filter(
+                Document.status == 'processing'
+            ).all()
+            
+            if stuck_docs:
+                logger.info(f"Found {len(stuck_docs)} stuck documents, resetting to pending...")
+                for doc in stuck_docs:
+                    doc.status = 'pending'
+                    doc.processing_progress = 0
+                db.commit()
+                logger.info(f"✅ Reset {len(stuck_docs)} documents to pending")
+        except Exception as e:
+            logger.error(f"Error resetting stuck documents: {str(e)}")
+            db.rollback()
+        finally:
+            db.close()
+        
     async def process_pending_documents(self):
         """Process all pending documents in the queue"""
         if self.processing:
@@ -27,9 +48,12 @@ class BackgroundProcessor:
             return
             
         self.processing = True
-        db = SessionLocal()
+        db = None
         
         try:
+            # Create a new database session for this background task
+            db = SessionLocal()
+            
             # Get all pending documents
             pending_docs = db.query(Document).filter(
                 Document.status == 'pending'
@@ -38,24 +62,40 @@ class BackgroundProcessor:
             logger.info(f"Found {len(pending_docs)} pending documents to process")
             
             for doc in pending_docs:
-                await self.process_document(db, doc)
-                # Yield to event loop after each document to allow API requests
-                await asyncio.sleep(0.1)
+                # Create a fresh session for each document to avoid blocking
+                doc_db = SessionLocal()
+                try:
+                    await self.process_document(doc_db, doc)
+                finally:
+                    doc_db.close()
+                    # Yield to event loop after each document
+                    await asyncio.sleep(0.1)
                 
         except Exception as e:
             logger.error(f"Error in background processor: {str(e)}")
         finally:
-            db.close()
+            if db:
+                db.close()
             self.processing = False
             
     async def process_document(self, db: Session, doc: Document):
         """Process a single document"""
         try:
-            logger.info(f"Processing document: {doc.filename} (ID: {doc.id})")
+            # Re-fetch the document to ensure we have fresh data in this session
+            doc = db.query(Document).filter(Document.id == doc.id).first()
+            if not doc or doc.status != 'pending':
+                logger.info(f"Document {doc.id if doc else 'unknown'} no longer pending, skipping")
+                return
+                
+            logger.info(f"▶️  Processing document: {doc.filename} (ID: {doc.id})")
+            logger.info(f"   File: {doc.file_path}, Size: {doc.file_size / 1024:.2f} KB")
             
             # Update status to processing
             doc.status = 'processing'
+            doc.processing_progress = 10  # Started
             db.commit()
+            db.refresh(doc)  # Refresh to avoid stale data
+            logger.info(f"   Progress: 10% - Processing started")
             
             # Read the file from storage
             if not doc.file_path or not Path(doc.file_path).exists():
@@ -65,23 +105,43 @@ class BackgroundProcessor:
                 file_content = f.read()
             
             # Process with Docling and create embeddings
-            logger.info(f"Starting OCR and chunking for {doc.filename}...")
+            logger.info(f"🚀 Starting OCR and chunking for {doc.filename}...")
             
-            # Yield to event loop before heavy processing
-            await asyncio.sleep(0)
+            # Update progress before heavy processing (combine updates to reduce DB commits)
+            doc.processing_progress = 30  # Starting OCR
+            db.commit()
+            logger.info(f"   Progress: 30% - OCR phase started")
+            
+            # Create progress callback to update database during OCR
+            def update_progress(progress: int):
+                """Update document progress in database"""
+                try:
+                    doc.processing_progress = progress
+                    db.commit()
+                    logger.info(f"   Progress: {progress}% - OCR in progress")
+                except Exception as e:
+                    logger.error(f"Failed to update progress: {e}")
             
             result = await asyncio.to_thread(
                 self.document_service.process_pdf,
                 file_content,
                 doc.filename,
-                str(doc.id)
+                str(doc.id),
+                update_progress  # Pass the progress callback
             )
             
-            # Yield to event loop after heavy processing
-            await asyncio.sleep(0)
-            
-            # Update document with results
+            # Update document with results (single commit)
             doc.status = 'completed'
+            doc.processing_progress = 100  # Completed
+            doc.total_chunks = result.get('total_chunks', 0)
+            doc.page_count = result.get('page_count', 0)
+            doc.processing_error = None
+            db.commit()
+            
+            logger.info(f"✅ Successfully completed: {doc.filename}")
+            logger.info(f"   Progress: 100% - {doc.page_count} pages, {doc.total_chunks} chunks")
+            logger.info(f"   Total time: {result.get('processing_time', 0):.2f}s")
+            doc.processing_progress = 100  # Completed
             doc.total_chunks = result.get('total_chunks', 0)
             doc.page_count = result.get('page_count', 0)
             doc.processing_error = None
@@ -112,6 +172,10 @@ async def start_background_processor():
     if background_processor is None:
         logger.error("Background processor not initialized!")
         return
+    
+    # Reset any stuck documents on startup
+    logger.info("Checking for stuck documents...")
+    background_processor.reset_stuck_documents()
         
     logger.info("Starting background document processor...")
     

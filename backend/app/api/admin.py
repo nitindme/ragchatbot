@@ -140,6 +140,7 @@ def list_documents(
             "id": str(doc.id),
             "filename": doc.filename,
             "status": doc.status,
+            "processing_progress": doc.processing_progress if hasattr(doc, 'processing_progress') else 0,
             "file_size": doc.file_size,
             "total_chunks": doc.total_chunks,
             "page_count": doc.page_count,

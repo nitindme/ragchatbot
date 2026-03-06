@@ -94,35 +94,85 @@ class DocumentService:
         """Compute SHA256 hash of file content"""
         return hashlib.sha256(content).hexdigest()
 
-    def load_document(self, file_path: str, file_type: str) -> str:
-        """Load and extract text from document using Docling"""
+    def load_document(self, file_path: str, file_type: str, progress_callback=None) -> tuple[str, int]:
+        """Load and extract text from document using Docling
+        
+        Args:
+            file_path: Path to the document file
+            file_type: File extension (.pdf, .txt, .docx)
+            progress_callback: Optional callback function(progress_percent) for progress updates
+            
+        Returns:
+            tuple: (extracted_text, page_count)
+        """
         if file_type == ".pdf":
             try:
                 print(f"DEBUG: Using Docling to process PDF: {file_path}")
                 
                 import time
+                import threading
                 start_time = time.time()
                 
+                # Start a background thread to report progress during conversion
+                conversion_done = threading.Event()
+                
+                def report_progress():
+                    """Report progress estimates while conversion is running"""
+                    if not progress_callback:
+                        return
+                    
+                    # Progress from 30% to 85% over the conversion time
+                    # Increment steadily every 10 seconds
+                    
+                    while not conversion_done.is_set():
+                        time.sleep(10)  # Update every 10 seconds
+                        elapsed = time.time() - start_time
+                        
+                        # Progress formula: 30% + (elapsed/20) * 55, capped at 85%
+                        # This gives ~3% increase every 10 seconds
+                        # 10s->32%, 30s->37%, 60s->47%, 120s->63%, 180s->79%, 200s->85%
+                        progress_increment = (elapsed / 20.0) * 55
+                        current_progress = min(85, int(30 + progress_increment))
+                        
+                        progress_callback(current_progress)
+                        print(f"   📄 OCR progress: {current_progress}% ({elapsed:.0f}s elapsed)")
+                
+                # Start progress reporting thread
+                progress_thread = threading.Thread(target=report_progress, daemon=True)
+                progress_thread.start()
+                
                 # Convert document using Docling
+                print(f"DEBUG: Starting Docling converter.convert()...")
                 result = self.doc_converter.convert(file_path)
+                
+                # Stop progress reporting
+                conversion_done.set()
+                progress_thread.join(timeout=1)
+                
+                print(f"DEBUG: Docling conversion complete! Processing result...")
                 doc = result.document
+                page_count = len(doc.pages)
+                print(f"DEBUG: Document object retrieved, pages: {page_count}")
                 
                 conversion_time = time.time() - start_time
+                print(f"DEBUG: Conversion took {conversion_time:.2f}s")
                 
                 # Export to markdown format which preserves tables nicely
+                print(f"DEBUG: Exporting to markdown...")
                 markdown_text = doc.export_to_markdown()
+                print(f"DEBUG: Markdown export complete! Length: {len(markdown_text)} chars")
                 
                 # Quick table count from markdown (safer than iterating body structure)
                 table_count = markdown_text.count('|---') if '|' in markdown_text else 0
                 
                 total_time = time.time() - start_time
-                print(f"DEBUG DOCLING: Processed {len(doc.pages)} pages in {total_time:.2f}s")
+                print(f"DEBUG DOCLING: Processed {page_count} pages in {total_time:.2f}s")
                 print(f"DEBUG DOCLING: Extracted {len(markdown_text)} chars, ~{table_count} tables")
                 
                 if len(markdown_text) < 10:
                     raise ValueError("PDF contains no text. The document may be blank or corrupted.")
                 
-                return markdown_text
+                return markdown_text, page_count
                 
             except Exception as e:
                 print(f"ERROR loading PDF with Docling: {e}")
@@ -130,15 +180,17 @@ class DocumentService:
                 
         elif file_type == ".txt":
             with open(file_path, "r", encoding="utf-8") as f:
-                return f.read()
+                text = f.read()
+                return text, 1  # Text files count as 1 page
                 
         elif file_type == ".docx":
             try:
                 print(f"DEBUG: Using Docling to process DOCX: {file_path}")
                 result = self.doc_converter.convert(file_path)
                 markdown_text = result.document.export_to_markdown()
-                print(f"DEBUG DOCLING: Extracted {len(markdown_text)} characters from DOCX")
-                return markdown_text
+                page_count = len(result.document.pages)
+                print(f"DEBUG DOCLING: Extracted {len(markdown_text)} characters from DOCX ({page_count} pages)")
+                return markdown_text, page_count
             except Exception as e:
                 print(f"ERROR loading DOCX with Docling: {e}")
                 raise ValueError(f"Failed to extract text from DOCX: {str(e)}")
@@ -203,10 +255,23 @@ class DocumentService:
         print(f"DEBUG: Stored in ChromaDB in {store_time:.2f}s")
         print(f"DEBUG: ✅ Total time: {embed_time + store_time:.2f}s for {total_chunks} chunks")
     
-    def process_pdf(self, content: bytes, filename: str, document_id: str) -> dict:
-        """Process PDF with Docling and store embeddings, return metadata"""
+    def process_pdf(self, content: bytes, filename: str, document_id: str, progress_callback=None) -> dict:
+        """Process PDF with Docling and store embeddings, return metadata
+        
+        Args:
+            content: File content as bytes
+            filename: Original filename
+            document_id: Unique document identifier
+            progress_callback: Optional callback(progress_percent: int) for progress updates
+            
+        Returns:
+            dict with total_chunks, page_count, processing_time
+        """
         import time
         import tempfile
+        
+        print(f"📄 Starting PDF processing for: {filename} (ID: {document_id})")
+        print(f"   File size: {len(content) / 1024:.2f} KB")
         
         # Save to temp file
         file_ext = os.path.splitext(filename)[1].lower()
@@ -214,36 +279,64 @@ class DocumentService:
             tmp.write(content)
             tmp_path = tmp.name
         
+        print(f"   Temp file created: {tmp_path}")
+        
         try:
             start_time = time.time()
             
-            # Extract text
-            text = self.load_document(tmp_path, file_ext)
+            # Extract text with progress tracking
+            print(f"🔍 Step 1/4: Extracting text with Docling OCR...")
+            extract_start = time.time()
+            text, page_count = self.load_document(tmp_path, file_ext, progress_callback)
+            extract_time = time.time() - extract_start
+            print(f"   ✅ Text extracted in {extract_time:.2f}s ({len(text)} characters from {page_count} pages)")
+            
+            # OCR complete - update to 90%
+            if progress_callback:
+                progress_callback(90)
             
             # Chunk document
+            print(f"✂️  Step 2/4: Chunking document...")
+            chunk_start = time.time()
             chunks = self.chunk_document(text)
             total_chunks = len(chunks)
+            chunk_time = time.time() - chunk_start
+            print(f"   ✅ Created {total_chunks} chunks in {chunk_time:.2f}s")
             
             if total_chunks == 0:
                 raise ValueError("No text content could be extracted from the document")
             
-            # Store embeddings
-            self.store_embeddings(document_id, chunks, filename)
+            # Update to 92% after chunking
+            if progress_callback:
+                progress_callback(92)
             
-            # Get page count from Docling result
-            result = self.doc_converter.convert(tmp_path)
-            page_count = len(result.document.pages)
+            # Store embeddings
+            print(f"💾 Step 3/4: Generating and storing embeddings...")
+            embed_start = time.time()
+            self.store_embeddings(document_id, chunks, filename)
+            embed_time = time.time() - embed_start
+            print(f"   ✅ Stored {total_chunks} embeddings in {embed_time:.2f}s")
+            
+            # Update to 95% after embeddings
+            if progress_callback:
+                progress_callback(95)
             
             total_time = time.time() - start_time
-            print(f"DEBUG: ✅ Processed {filename} in {total_time:.2f}s: {page_count} pages, {total_chunks} chunks")
+            print(f"✨ COMPLETE: {filename} processed in {total_time:.2f}s")
+            print(f"   Summary: {page_count} pages → {total_chunks} chunks")
+            print(f"   Time breakdown: Extract={extract_time:.1f}s, Chunk={chunk_time:.1f}s, Embed={embed_time:.1f}s")
             
             return {
                 "total_chunks": total_chunks,
                 "page_count": page_count,
                 "processing_time": total_time
             }
+        except Exception as e:
+            print(f"❌ ERROR processing {filename}: {str(e)}")
+            raise
         finally:
             os.unlink(tmp_path)
+            print(f"🧹 Cleaned up temp file: {tmp_path}")
     
     def delete_embeddings(self, document_id: str):
         """Delete all embeddings for a document"""
